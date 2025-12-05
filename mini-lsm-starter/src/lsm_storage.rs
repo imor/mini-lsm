@@ -32,7 +32,7 @@ use crate::compact::{
 };
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::manifest::Manifest;
-use crate::mem_table::MemTable;
+use crate::mem_table::{GetResult, MemTable};
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
 
@@ -297,8 +297,24 @@ impl LsmStorageInner {
     }
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
-    pub fn get(&self, _key: &[u8]) -> Result<Option<Bytes>> {
-        unimplemented!()
+    pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
+        let state = self.state.read();
+
+        match state.memtable.get(key) {
+            GetResult::Tombstoned => return Ok(None),
+            GetResult::Found(bytes) => return Ok(Some(bytes)),
+            GetResult::Missing => {}
+        }
+
+        for memtable in state.imm_memtables.iter() {
+            match memtable.get(key) {
+                GetResult::Tombstoned => return Ok(None),
+                GetResult::Found(bytes) => return Ok(Some(bytes)),
+                GetResult::Missing => {}
+            }
+        }
+
+        Ok(None)
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
@@ -307,13 +323,52 @@ impl LsmStorageInner {
     }
 
     /// Put a key-value pair into the storage by writing into the current memtable.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let approximate_size = {
+            let state = self.state.read();
+            state.memtable.put(key, value)?;
+            state.memtable.approximate_size()
+        };
+        // Improtant: try_freeze should be called without the self.state read lock held
+        // to avaoid deadlock, because it internally takes the read lock again.
+        self.try_freeze(approximate_size)?;
+        Ok(())
     }
 
     /// Remove a key from the storage by writing an empty value.
-    pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
+        self.put(key, &[])?;
+        Ok(())
+    }
+
+    /// Tries to freeze the current memtable if it is beyond the target sst size
+    fn try_freeze(&self, approximate_size: usize) -> Result<()> {
+        // We first do a cheap check if estimated size is beyond the limit without holding a lock
+        // If this is not true (which is most of the time) we do not pay the penalty of locking/unlocking
+        if approximate_size >= self.options.target_sst_size {
+            // Lock the state_lock because [`force_freeze_memtable`] needs the state lock guard,
+            // but also critically the size check should be done while this lock is held to avoid
+            // creating current memtable with size below the limit. See below comments for details about
+            // how this can happen if this lock is not held.
+            let state_lock_guard = self.state_lock.lock();
+            // Get the current state as read only
+            let current_state = self.state.read();
+            // Check again if the memtable is over capacity once the state lock is held
+            // to avoid two threads both trying to freeze a memtable and the second one
+            // freezing a memtable which is not yet beyond capacity. This could happen e.g.
+            // in the following scenario if no state lock was held:
+            // 1. Thread one calls try_freeze and finds that the estimated_size if beyond the limit.
+            // 2. Thread two also does the same and finds the estimated_size beyond the limit.
+            // 3. Thread one force freezes the memtable which creates a new current memtable.
+            // 4. Thred two does the same.
+            // 5. Now the new memtable created by thread one is frozed even though it was empty.
+            if current_state.memtable.approximate_size() >= self.options.target_sst_size {
+                // Unlock the state lock as soon as possible
+                drop(current_state);
+                self.force_freeze_memtable(&state_lock_guard)?;
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn path_of_sst_static(path: impl AsRef<Path>, id: usize) -> PathBuf {
@@ -337,8 +392,27 @@ impl LsmStorageInner {
     }
 
     /// Force freeze the current memtable to an immutable memtable
-    pub fn force_freeze_memtable(&self, _state_lock_observer: &MutexGuard<'_, ()>) -> Result<()> {
-        unimplemented!()
+    pub fn force_freeze_memtable(&self, _state_lock_guard: &MutexGuard<'_, ()>) -> Result<()> {
+        // Create a new memtable which will be the new current memtable
+        let new_memtable_id = self.next_sst_id();
+        let new_memtable = Arc::new(MemTable::create(new_memtable_id));
+
+        // Limit the scope for which the write lock is held to minimize lock contention
+        {
+            // Get the write lock for the state
+            let mut current_state = self.state.write();
+            // Clone the state, the cloned state's current memtable and immutable memtables list will be updated next
+            let mut state_clone = current_state.as_ref().clone();
+            // Replace the current memtable in the cloned state with the new memtable created above
+            let old_memtable = std::mem::replace(&mut state_clone.memtable, new_memtable);
+            // TODO: inserting at 0 index is costly. Either insert at the end or make it a VecDeque
+            // The old memtable is inserted into the immutable memtables list, freezing that memtable in essence
+            state_clone.imm_memtables.insert(0, old_memtable);
+            // The cloned state becomes the new current state and the old state is dropped
+            *current_state = Arc::new(state_clone);
+        }
+
+        Ok(())
     }
 
     /// Force flush the earliest-created immutable memtable to disk

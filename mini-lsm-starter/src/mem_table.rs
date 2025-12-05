@@ -34,6 +34,7 @@ use crate::wal::Wal;
 ///
 /// An initial implementation of memtable is part of week 1, day 1. It will be incrementally implemented in other
 /// chapters of week 1 and week 2.
+#[derive(Debug)]
 pub struct MemTable {
     map: Arc<SkipMap<Bytes, Bytes>>,
     wal: Option<Wal>,
@@ -48,6 +49,13 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
         Bound::Excluded(x) => Bound::Excluded(Bytes::copy_from_slice(x)),
         Bound::Unbounded => Bound::Unbounded,
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum GetResult {
+    Tombstoned,
+    Found(Bytes),
+    Missing,
 }
 
 impl MemTable {
@@ -75,7 +83,7 @@ impl MemTable {
         self.put(key, value)
     }
 
-    pub fn for_testing_get_slice(&self, key: &[u8]) -> Option<Bytes> {
+    pub fn for_testing_get_slice(&self, key: &[u8]) -> GetResult {
         self.get(key)
     }
 
@@ -91,8 +99,12 @@ impl MemTable {
     }
 
     /// Get a value by key.
-    pub fn get(&self, key: &[u8]) -> Option<Bytes> {
-        self.map.get(key).map(|e| e.value().clone())
+    pub fn get(&self, key: &[u8]) -> GetResult {
+        match self.map.get(key) {
+            Some(value) if value.value().is_empty() => GetResult::Tombstoned,
+            Some(value) => GetResult::Found(value.value().clone()),
+            None => GetResult::Missing,
+        }
     }
 
     /// Put a key-value pair into the mem-table.
@@ -103,6 +115,11 @@ impl MemTable {
     pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
         let key = Bytes::copy_from_slice(key);
         let value = Bytes::copy_from_slice(value);
+        let kv_size = key.len() + value.len();
+        // If the key already exists in the map we double count the kv_size in the approximate_size
+        // This can be refined later to be more accurate but is fine for now.
+        self.approximate_size
+            .fetch_add(kv_size, std::sync::atomic::Ordering::Relaxed);
         self.map.insert(key, value);
 
         Ok(())

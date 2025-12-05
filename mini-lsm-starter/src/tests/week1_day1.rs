@@ -14,11 +14,12 @@
 
 use std::sync::Arc;
 
+use bytes::Bytes;
 use tempfile::tempdir;
 
 use crate::{
     lsm_storage::{LsmStorageInner, LsmStorageOptions},
-    mem_table::MemTable,
+    mem_table::{GetResult, MemTable},
 };
 
 #[test]
@@ -28,16 +29,16 @@ fn test_task1_memtable_get() {
     memtable.for_testing_put_slice(b"key2", b"value2").unwrap();
     memtable.for_testing_put_slice(b"key3", b"value3").unwrap();
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key1").unwrap()[..],
-        b"value1"
+        memtable.for_testing_get_slice(b"key1"),
+        GetResult::Found(Bytes::copy_from_slice(b"value1"))
     );
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key2").unwrap()[..],
-        b"value2"
+        memtable.for_testing_get_slice(b"key2"),
+        GetResult::Found(Bytes::copy_from_slice(b"value2"))
     );
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key3").unwrap()[..],
-        b"value3"
+        memtable.for_testing_get_slice(b"key3"),
+        GetResult::Found(Bytes::copy_from_slice(b"value3"))
     );
 }
 
@@ -51,16 +52,16 @@ fn test_task1_memtable_overwrite() {
     memtable.for_testing_put_slice(b"key2", b"value22").unwrap();
     memtable.for_testing_put_slice(b"key3", b"value33").unwrap();
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key1").unwrap()[..],
-        b"value11"
+        memtable.for_testing_get_slice(b"key1"),
+        GetResult::Found(Bytes::copy_from_slice(b"value11"))
     );
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key2").unwrap()[..],
-        b"value22"
+        memtable.for_testing_get_slice(b"key2"),
+        GetResult::Found(Bytes::copy_from_slice(b"value22"))
     );
     assert_eq!(
-        &memtable.for_testing_get_slice(b"key3").unwrap()[..],
-        b"value33"
+        memtable.for_testing_get_slice(b"key3"),
+        GetResult::Found(Bytes::copy_from_slice(b"value33"))
     );
 }
 

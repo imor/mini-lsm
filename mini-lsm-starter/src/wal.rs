@@ -26,6 +26,7 @@ use std::sync::Arc;
 
 use crate::key::KeySlice;
 
+#[derive(Debug)]
 pub struct Wal {
     file: Arc<Mutex<BufWriter<File>>>,
 }
