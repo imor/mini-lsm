@@ -162,7 +162,7 @@ impl StorageIterator for MemTableIterator {
         unimplemented!()
     }
 
-    fn key(&self) -> KeySlice {
+    fn key(&'_ self) -> KeySlice<'_> {
         unimplemented!()
     }
 
