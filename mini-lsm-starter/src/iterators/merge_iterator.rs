@@ -82,17 +82,10 @@ impl<I: StorageIterator> MergeIterator<I> {
         }
     }
 
-    // /// Pops all
-    // fn pop_equal(&mut self, current_key: I::KeyType<'_>) -> Result<()> {
-    //     while let Some(other_iter) = self.iters.peek_mut() {
-    //         if current_key == other_iter.iter.key() {
-    //             //
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     Ok(())
-    // }
+    /// Pops all
+    fn pop_equal(&mut self, current_key: I::KeyType<'_>) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIterator
