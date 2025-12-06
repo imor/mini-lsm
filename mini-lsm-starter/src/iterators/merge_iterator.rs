@@ -72,7 +72,13 @@ impl<I: StorageIterator> MergeIterator<I> {
         let mut heap = BinaryHeap::new();
 
         for (index, iter) in iters.into_iter().enumerate() {
-            heap.push(IterWithIndex { iter, index });
+            // Only add valid iterators to the heap because adding invalid
+            // iterators to the heap will result in those invalid iterators'
+            // key() method being called by the Ord::cmp method (see above)
+            // This might not be valid to call on an invalid iterator.
+            if iter.is_valid() {
+                heap.push(IterWithIndex { iter, index });
+            }
         }
 
         let current = heap.pop();
