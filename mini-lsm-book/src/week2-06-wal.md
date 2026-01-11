@@ -8,8 +8,8 @@
 
 In this chapter, you will:
 
-* Implement encoding and decoding of the write-ahead log file.
-* Recover memtables from the WALs when the system restarts.
+- Implement encoding and decoding of the write-ahead log file.
+- Recover memtables from the WALs when the system restarts.
 
 To copy the test cases into the starter code and run them,
 
@@ -36,7 +36,7 @@ The WAL encoding is simply a list of key-value pairs.
 
 You will also need to implement the `recover` function to read the WAL and recover the state of a memtable.
 
-Note that we are using a `BufWriter` for writing the WAL. Using a `BufWriter` can reduce the number of syscalls into the OS, so as to reduce the latency of the write path. The data is not guaranteed to be written to the disk when the user modifies a key. Instead, the engine only guarantee that the data is persisted when `sync` is called. To correctly persist the data to the disk, you will need to first flush the data from the buffer writer to the file object by calling `flush()`, and then do a fsync on the file by using `get_mut().sync_all()`. Note that you *only* need to fsync when the engine's `sync` gets called. You *do not* need to fsync every time on writing data.
+Note that we are using a `BufWriter` for writing the WAL. Using a `BufWriter` can reduce the number of syscalls into the OS, reducing the latency of the write path. The data is not guaranteed to be written to disk when the user modifies a key. Instead, the engine only guarantees that the data is persisted when `sync` is called. To correctly persist the data to disk, you will need to first flush the data from the buffer writer to the file object by calling `flush()`, and then do an fsync on the file by using `get_mut().sync_all()`. Note that you _only_ need to fsync when the engine's `sync` gets called. You _do not_ need to fsync every time on writing data.
 
 ## Task 2: Integrate WALs
 
@@ -60,22 +60,22 @@ In this task, you will need to modify:
 src/lsm_storage.rs
 ```
 
-If WAL is enabled, you will need to recover the memtables based on WALs when loading the database. You will also need to implement the `sync` function of the database. The basic guarantee of `sync` is that the engine is sure that the data is persisted to the disk (and will be recovered when it restarts). To achieve this, you can simply sync the WAL corresponding to the current memtable.
+If WAL is enabled, you will need to recover the memtables based on WALs when loading the database. You will also need to implement the `sync` function of the database. The basic guarantee of `sync` is that the engine ensures that the data is persisted to disk (and will be recovered when it restarts). To achieve this, you can simply sync the WAL corresponding to the current memtable.
 
 ```
 cargo run --bin mini-lsm-cli -- --enable-wal
 ```
 
-Remember to recover the correct `next_sst_id` from the state, which should be `max{memtable id, sst id}` + 1. In your `close` function, you should not flush memtables to SSTs if `enable_wal` is set to true, as WAL itself provides persistency. You should wait until all compaction and flush threads to exit before closing the database.
+Remember to recover the correct `next_sst_id` from the state, which should be `max{memtable id, sst id}` + 1. In your `close` function, you should not flush memtables to SSTs if `enable_wal` is set to true, as WAL itself provides persistency. You should wait until all compaction and flush threads exit before closing the database.
 
 ## Test Your Understanding
 
-* When should you call `fsync` in your engine? What happens if you call `fsync` too often (i.e., on every put key request)?
-* How costly is the `fsync` operation in general on an SSD (solid state drive)?
-* When can you tell the user that their modifications (put/delete) have been persisted?
-* How can you handle corrupted data in WAL?
-* Is it possible to design an LSM engine without WAL (i.e., use L0 as WAL)? What will be the implications of this design?
+- When should you call `fsync` in your engine? What happens if you call `fsync` too often (such as on every put key request)?
+- How costly is the `fsync` operation in general on an SSD (solid state drive)?
+- When can you tell the user that their modifications (put/delete) have been persisted?
+- How can you handle corrupted data in WAL?
+- Is it possible to design an LSM engine without WAL (that is, use L0 as WAL)? What are the implications of this design?
 
-We do not provide reference answers to the questions, and feel free to discuss about them in the Discord community.
+We do not provide reference answers to the questions, and feel free to discuss them in the Discord community.
 
 {{#include copyright.md}}

@@ -8,8 +8,8 @@
 
 In this chapter, you will:
 
-* Implement a leveled compaction strategy and simulate it on the compaction simulator.
-* Incorporate leveled compaction strategy into the system.
+- Implement a leveled compaction strategy and simulate it on the compaction simulator.
+- Incorporate leveled compaction strategy into the system.
 
 To copy the test cases into the starter code and run them,
 
@@ -28,8 +28,8 @@ It might be helpful to take a look at [week 2 overview](./week2-overview.md) bef
 
 In chapter 2 day 2, you have implemented the simple leveled compaction strategies. However, the implementation has a few problems:
 
-* Compaction always include a full level. Note that you cannot remove the old files until you finish the compaction, and therefore, your storage engine might use 2x storage space while the compaction is going on (if it is a full compaction). Tiered compaction has the same problem. In this chapter, we will implement partial compaction that we select one SST from the upper level for compaction, instead of the full level.
-* SSTs may be compacted across empty levels. As you have seen in the compaction simulator, when the LSM state is empty, and the engine flushes some L0 SSTs, these SSTs will be first compacted to L1, then from L1 to L2, etc. An optimal strategy is to directly place the SST from L0 to the lowest level possible, so as to avoid unnecessary write amplification.
+- Compaction always include a full level. Note that you cannot remove the old files until you finish the compaction, and therefore, your storage engine might use 2x storage space while the compaction is going on (if it is a full compaction). Tiered compaction has the same problem. In this chapter, we will implement partial compaction that we select one SST from the upper level for compaction, instead of the full level.
+- SSTs may be compacted across empty levels. As you have seen in the compaction simulator, when the LSM state is empty, and the engine flushes some L0 SSTs, these SSTs will be first compacted to L1, then from L1 to L2, etc. An optimal strategy is to directly place the SST from L0 to the lowest level possible, so as to avoid unnecessary write amplification.
 
 In this chapter, you will implement a production-ready leveled compaction strategy. The strategy is the same as RocksDB's leveled compaction. You will need to modify:
 
@@ -61,7 +61,7 @@ When the bottom level reaches or exceeds `base_level_size_mb`, we will compute t
 0 0 0 0 30MB 300MB
 ```
 
-In addition, at most *one* level can have a positive target size below `base_level_size_mb`. Assume we now have 30GB files in the last level, the target sizes will be,
+In addition, at most _one_ level can have a positive target size below `base_level_size_mb`. Assume we now have 30GB files in the last level, the target sizes will be,
 
 ```
 0 0 30MB 300MB 3GB 30GB
@@ -89,7 +89,7 @@ L2 (0): []
 L3 (2): [19, 20]
 L4 (6): [11, 12, 7, 8, 9, 10]
 
-...
+ Compaction always includes a full level. Note that you cannot remove the old files until you finish the compaction, and therefore your storage engine might use 2x storage space while the compaction is in progress (if it is a full compaction). Tiered compaction has the same problem. In this chapter, we will implement partial compaction that selects one SST from the upper level for compaction, instead of the full level.
 
 --- After Flush ---
 L0 (2): [102, 103]
@@ -171,24 +171,23 @@ The implementation should be similar to simple leveled compaction. Remember to c
 
 ## Test Your Understanding
 
-* What is the estimated write amplification of leveled compaction?
-* What is the estimated read amplification of leveled compaction?
-* Finding a good key split point for compaction may potentially reduce the write amplification, or it does not matter at all? (Consider that case that the user write keys beginning with some prefixes, `00` and `01`. The number of keys under these two prefixes are different and their write patterns are different. If we can always split `00` and `01` into different SSTs...)
-* Imagine that a user was using tiered (universal) compaction before and wants to migrate to leveled compaction. What might be the challenges of this migration? And how to do the migration?
-* And if we do it reversely, what if the user wants to migrate from leveled compaction to tiered compaction?
-* What happens if compaction speed cannot keep up with the SST flushes for leveled compaction?
-* What might needs to be considered if the system schedules multiple compaction tasks in parallel?
-* What is the peak storage usage for leveled compaction? Compared with universal compaction?
-* Is it true that with a lower `level_size_multiplier`, you can always get a lower write amplification?
-* What needs to be done if a user not using compaction at all decides to migrate to leveled compaction?
-* Some people propose to do intra-L0 compaction (compact L0 tables and still put them in L0) before pushing them to lower layers. What might be the benefits of doing so? (Might be related: [PebblesDB SOSP'17](https://www.cs.utexas.edu/~vijay/papers/sosp17-pebblesdb.pdf))
-* Consider the case that the upper level has two tables of `[100, 200], [201, 300]` and the lower level has `[50, 150], [151, 250], [251, 350]`. In this case, do you still want to compact one file in the upper level at a time? Why?
+- What is the estimated write amplification of leveled compaction?
+- What is the estimated read amplification of leveled compaction?
+- Finding a good key split point for compaction may potentially reduce the write amplification, or it does not matter at all? (Consider that case that the user write keys beginning with some prefixes, `00` and `01`. The number of keys under these two prefixes are different and their write patterns are different. If we can always split `00` and `01` into different SSTs...)
+- Imagine that a user was using tiered (universal) compaction before and wants to migrate to leveled compaction. What might be the challenges of this migration? And how to do the migration?
+- And if we do it reversely, what if the user wants to migrate from leveled compaction to tiered compaction?
+- What happens if compaction speed cannot keep up with the SST flushes for leveled compaction?
+- What might needs to be considered if the system schedules multiple compaction tasks in parallel?
+- What is the peak storage usage for leveled compaction? Compared with universal compaction?
+- Is it true that with a lower `level_size_multiplier`, you can always get a lower write amplification?
+- What needs to be done if a user not using compaction at all decides to migrate to leveled compaction?
+- Some people propose to do intra-L0 compaction (compact L0 tables and still put them in L0) before pushing them to lower layers. What might be the benefits of doing so? (Might be related: [PebblesDB SOSP'17](https://www.cs.utexas.edu/~vijay/papers/sosp17-pebblesdb.pdf))
+- Consider the case that the upper level has two tables of `[100, 200], [201, 300]` and the lower level has `[50, 150], [151, 250], [251, 350]`. In this case, do you still want to compact one file in the upper level at a time? Why?
 
 We do not provide reference answers to the questions, and feel free to discuss about them in the Discord community.
 
 ## Bonus Tasks
 
-* **SST Ingestion.** A common optimization of data migration / batch import in LSM trees is to ask the upstream to generate SST files of their data, and directly place these files in the LSM state without going through the write path.
-* **SST Selection.** Instead of selecting the oldest SST, you may think of other heuristics to choose the SST to compact.
-
-{{#include copyright.md}}
+- **SST Ingestion.** A common optimization of data migration / batch import in LSM trees is to ask the upstream to generate SST files of their data, and directly place these files in the LSM state without going through the write path.
+- **SST Selection.** Instead of selecting the oldest SST, you may think of other heuristics to choose the SST to compact.
+  {{#include copyright.md}}

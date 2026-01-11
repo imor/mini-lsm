@@ -4,13 +4,13 @@
 
 # Snack Time: Compaction Filters
 
-Congratulations! You made it there! In the previous chapter, you made your LSM engine multi-version capable, and the users can use transaction APIs to interact with your storage engine. At the end of this week, we will implement some easy but important features of the storage engine. Welcome to Mini-LSM's week 3 snack time!
+Congratulations — you made it! In the previous chapter, you made your LSM engine multi-version capable, and users can now use transaction APIs to interact with it. To wrap up the week, we will implement a few small but important features. Welcome to Mini-LSM’s Week 3 snack time!
 
-In this chapter, we will generalize our compaction garbage collection logic to become compaction filters.
+In this chapter, we generalize compaction garbage collection into compaction filters.
 
-For now, our compaction will simply retain the keys above the watermark and the latest version of the keys below the watermark. We can add some magic to the compaction process to help the user collect some unused data automatically as a background job.
+Currently, compaction retains all keys above the watermark and only the latest version at or below the watermark. We can extend compaction to help users automatically clean up unused data in the background.
 
-Consider a case that the user uses Mini-LSM to store database tables. Each row in the table are prefixed with the table name. For example,
+Consider a case where the user stores database tables in Mini-LSM. Each row key is prefixed with the table name. For example:
 
 ```
 table1_key1 -> row
@@ -20,31 +20,31 @@ table2_key1 -> row
 table2_key2 -> row
 ```
 
-Now the user executes `DROP TABLE table1`. The engine will need to clean up all the data beginning with `table1`.
+Now the user executes `DROP TABLE table1`. The engine needs to clean up all data with the `table1` prefix.
 
-There are a lot of ways to achieve the goal. The user of Mini-LSM can scan all the keys beginning with `table1` and requests the engine to delete it. However, scanning a very large database might be slow, and it will generate the same number of delete tombstones as the existing keys. Therefore, scan-and-delete will not free up the space occupied by the dropped table -- instead, it will add more data to the engine and the space can only be reclaimed when the tombstones reach the bottom level of the engine.
+There are several ways to do this. The user could scan all keys beginning with `table1` and request deletes. However, scanning a large database is slow and generates as many tombstones as existing keys. Scan-and-delete does not immediately free space — it adds more data, and space is only reclaimed when tombstones reach the bottom level.
 
-Or, they can create column families (we will talk about this in *rest of your life* chapter). They store each table in a column family, which is a standalone LSM state, and directly remove the SST files corresponding to the column family when the user drop the table.
+Alternatively, they can use column families (covered in the “rest of your life” chapter). Each table is stored in a separate column family (a standalone LSM state), and the SST files can be removed directly when the table is dropped.
 
-In this course, we will implement the third approach: compaction filters. Compaction filters can be dynamically added to the engine at runtime. During the compaction, if a key matching the compaction filter is found, we can silently remove it in the background. Therefore, the user can attach a compaction filter of `prefix=table1` to the engine, and all these keys will be removed during compaction.
+In this course, we implement a third approach: compaction filters. Filters can be added dynamically at runtime. During compaction, if a key matches a filter, we silently remove it in the background. For example, attaching a filter `prefix=table1` removes all matching keys during compaction.
 
 ## Task 1: Compaction Filter
 
-In this task, you will need to modify:
+In this task, modify:
 
 ```
 src/compact.rs
 ```
 
-You can iterate all compaction filters in `LsmStorageInner::compaction_filters`. If the first version of the key below watermark matches the compaction filter, simply remove it instead of keeping it in the SST file.
+Iterate all compaction filters in `LsmStorageInner::compaction_filters`. If the first version of a key at or below the watermark matches a filter, remove it instead of keeping it in the SST file.
 
-To run test cases,
+To run the test cases:
 
 ```
 cargo x copy-test --week 3 --day 7
 cargo x scheck
 ```
 
-You can assume that the user will not get the keys within the prefix filter range. And, they will not scan the keys in the prefix range. Therefore, it is okay to return a wrong value when a user requests the keys in the prefix filter range (i.e., undefined behavior).
+Assume users will not `get` or `scan` keys within the filtered prefix range. Returning a value for keys in that range is undefined behavior.
 
 {{#include copyright.md}}

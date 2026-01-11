@@ -4,7 +4,7 @@
 
 # The Rest of Your Life (TBD)
 
-This is an advanced part that deep dives into optimizations and applications of the LSM storage engine and will make your implementation more production-ready. We are still planning on the content, and this part will not be publicly available in near future.
+This advanced part deep-dives into optimizations and applications of the LSM storage engine to make your implementation more production-ready. We are still planning the content, and this part will not be publicly available in the near future.
 
 | Week + Chapter | Topic                                | Solution | Starter Code | Writeup |
 | -------------- | ------------------------------------ | -------- | ------------ | ------- |
@@ -16,7 +16,7 @@ This is an advanced part that deep dives into optimizations and applications of 
 | 4.6            | Build Your Own Block Cache           |          |              |         |
 | 4.7            | Build Your Own SkipList              |          |              |         |
 | 4.8            | Async Engine                         |          |              |         |
-| 4.9            | IO-uring-based I/O engine            |          |              |         |
+| 4.9            | io_uring-based I/O Engine            |          |              |         |
 | 4.10           | Prefetching                          |          |              |         |
 | 4.11           | Key-Value Separation                 |          |              |         |
 | 4.12           | Column Families                      |          |              |         |

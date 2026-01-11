@@ -6,24 +6,23 @@
 
 ![Chapter Overview](./lsm-tutorial/week2-overview.svg)
 
-In the last week, you have implemented all necessary structures for an LSM storage engine, and your storage engine already supports read and write interfaces. In this week, we will deep dive into the disk organization of the SST files and investigate an optimal way to achieve both performance and cost efficiency in the system. We will spend 4 days learning different compaction strategies, from the easiest to the most complex ones, and then implement the remaining parts for the storage engine persistence. At the end of this week, you will have a fully functional and efficient LSM storage engine.
+In the previous week, you implemented all necessary structures for an LSM storage engine, and your engine already supports read and write interfaces. This week, we will dive deep into the disk organization of SST files and investigate optimal ways to achieve both performance and cost efficiency. We will spend four days learning different compaction strategies, from the simplest to the most complex, and then implement the remaining parts for the engine's persistence. By the end of this week, you will have a fully functional and efficient LSM storage engine.
 
 We have 7 chapters (days) in this part:
 
-
-* [Day 1: Compaction Implementation](./week2-01-compaction.md). You will merge all L0 SSTs into a sorted run.
-* [Day 2: Simple Leveled Compaction](./week2-02-simple.md). You will implement a classic leveled compaction algorithm and use compaction simulator to see how well it works.
-* [Day 3: Tiered/Universal Compaction](./week2-03-tiered.md). You will implement the RocksDB universal compaction algorithm and understand the pros/cons.
-* [Day 4: Leveled Compaction](./week2-04-leveled.md). You will implement the RocksDB leveled compaction algorithm. This compaction algorithm also supports partial compaction, so as to reduce peak space usage.
-* [Day 5: Manifest](./week2-05-manifest.md). You will store the LSM state on the disk and recover from the state.
-* [Day 6: Write-Ahead Log (WAL)](./week2-06-wal.md). User requests will be routed to both memtable and WAL so that all operations will be persisted.
-* [Day 7: Write Batch and Checksums](./week2-07-snacks.md). You will implement write batch API (for preparation for week 3 MVCC) and checksums for all of your storage formats.
+- [Day 1: Compaction Implementation](./week2-01-compaction.md). You will merge all L0 SSTs into a sorted run.
+- [Day 2: Simple Leveled Compaction](./week2-02-simple.md). You will implement a classic leveled compaction algorithm and use the compaction simulator to see how well it works.
+- [Day 3: Tiered/Universal Compaction](./week2-03-tiered.md). You will implement the RocksDB universal compaction algorithm and understand the pros/cons.
+- [Day 4: Leveled Compaction](./week2-04-leveled.md). You will implement the RocksDB leveled compaction algorithm. This compaction algorithm also supports partial compaction, so as to reduce peak space usage.
+- [Day 5: Manifest](./week2-05-manifest.md). You will store the LSM state on the disk and recover from the state.
+- [Day 6: Write-Ahead Log (WAL)](./week2-06-wal.md). User requests are routed to both the memtable and WAL so that all operations are persisted.
+- [Day 7: Write Batch and Checksums](./week2-07-snacks.md). You will implement a write-batch API (preparation for week 3 MVCC) and checksums for all your storage formats.
 
 ## Compaction and Read Amplification
 
-Let us talk about compaction first. In the previous part, you simply flush the memtable to an L0 SST. Imagine that you have written gigabytes of data and now you have 100 SSTs. Every read request (without filtering) will need to read 100 blocks from these SSTs. This amplification is read amplification -- the number of I/O requests you will need to send to the disk for one get operation.
+Let us talk about compaction first. In the previous part, you simply flush the memtable to an L0 SST. Imagine that you have written gigabytes of data and now you have 100 SSTs. Every read request (without filtering) will need to read 100 blocks from these SSTs. This is read amplification — the number of I/O requests needed for one get operation.
 
-To reduce read amplification, we can merge all the L0 SSTs into a larger structure, so that it would be possible to only read one SST and one block to retrieve the requested data. Say that we still have these 100 SSTs, and now, we do a merge sort of these 100 SSTs to produce another 100 SSTs, each of them contains non-overlapping key ranges. This process is **compaction**, and these 100 non-overlapping SSTs is a **sorted run**.
+To reduce read amplification, we can merge all the L0 SSTs into a larger structure, so that it is possible to read only one SST and one block to retrieve the requested data. Say that we still have these 100 SSTs, and now we do a merge sort of these 100 SSTs to produce another 100 SSTs, each of which contains non-overlapping key ranges. This process is **compaction**, and these 100 non-overlapping SSTs are a **sorted run**.
 
 To make this process clearer, let us take a look at this concrete example:
 
@@ -41,13 +40,13 @@ SST 5: key range 03001 - key 06000, 1000 keys
 SST 6: key range 06000 - key 10010, 1000 keys
 ```
 
-The 3 new SSTs are created by merging SST 1, 2, and 3. We can get a sorted 3000 keys and then split them into 3 files, so as to avoid having a super large SST file. Now our LSM state has 3 non-overlapping SSTs, and we only need to access SST 4 to find key 02333.
+The 3 new SSTs are created by merging SST 1, 2, and 3. We can produce a sorted list of 3000 keys and then split it into three files to avoid having a super large SST file. Now our LSM state has 3 non-overlapping SSTs, and we only need to access SST 4 to find key 02333.
 
 ## Two Extremes of Compaction and Write Amplification
 
-So from the above example, we have 2 naive ways of handling the LSM structure -- not doing compactions at all, and always do full compaction when new SSTs are flushed.
+So from the above example, we have two naive ways of handling the LSM structure — not doing compactions at all, and always doing a full compaction whenever new SSTs are flushed.
 
-Compaction is a time-consuming operation. It will need to read all data from some files, and write the same amount of files to the disk. This operation takes a lot of CPU resources and I/O resources. Not doing compactions at all leads to high read amplification, but it does not need to write new files. Always doing full compaction reduces the read amplification, but it will need to constantly rewrite the files on the disk.
+Compaction is a time-consuming operation. It needs to read all data from some files and write the same amount of data to disk. This operation takes a lot of CPU resources and I/O resources. Not doing compactions at all leads to high read amplification, but it does not require writing new files. Always doing full compaction reduces read amplification, but it constantly rewrites files on disk.
 
 ![no compaction](./lsm-tutorial/week2-00-two-extremes-1.svg)
 
@@ -55,11 +54,11 @@ Compaction is a time-consuming operation. It will need to read all data from som
 
 ![always full compaction](./lsm-tutorial/week2-00-two-extremes-2.svg)
 
-<p class="caption">Always compact when new SST being flushed</p>
+<p class="caption">Always compact when a new SST is flushed</p>
 
-The ratio of memtables flushed to the disk versus total data written to the disk is write amplification. That is to say, no compaction has a write amplification ratio of 1x, because once the SSTs are flushed to the disk, they will stay there. Always doing compaction has a very high write amplification. If we do a full compaction every time we get an SST, the data written to the disk will be quadratic to the number of SSTs flushed. For example, if we flushed 100 SSTs to the disk, we will do compactions of 2 files, 3 files, ..., 100 files, where the actual total amount of data we wrote to the disk is about 5000 SSTs. The write amplification after writing 100 SSTs in this cause would be 50x.
+Write amplification is the ratio of memtables flushed to disk versus the total data written to disk. That is to say, no compaction has a write amplification ratio of 1x, because once the SSTs are flushed to disk, they stay there. Always doing compaction has a very high write amplification. If we do a full compaction every time we get an SST, the data written to disk will be quadratic in the number of SSTs flushed. For example, if we flushed 100 SSTs to disk, we would do compactions of 2 files, 3 files, ..., 100 files, where the actual total amount of data written to disk is about 5000 SSTs. The write amplification after writing 100 SSTs in this case would be 50x.
 
-A good compaction strategy can balance read amplification, write amplification, and space amplification (we will talk about it soon). In a general-purpose LSM storage engine, it is generally impossible to find a strategy that can achieve the lowest amplification in all 3 of these factors, unless there are some specific data pattern that the engine could use. The good thing about LSM is that we can theoretically analyze the amplifications of a compaction strategy and all these things happen in the background. We can choose compaction strategies and dynamically change some parameters of them to adjust our storage engine to the optimal state. Compaction strategies are all about tradeoffs, and LSM-based storage engine enables us to select what to be traded at runtime.
+A good compaction strategy balances read amplification, write amplification, and space amplification (we will talk about space amplification soon). In a general-purpose LSM storage engine, it is generally impossible to find a strategy that achieves the lowest amplification in all three factors, unless there are specific data patterns the engine can leverage. The good thing about LSM is that we can theoretically analyze the amplifications of a compaction strategy, and all these things happen in the background. We can choose compaction strategies and dynamically change parameters to adjust our storage engine to the optimal state. Compaction strategies are all about tradeoffs, and LSM-based storage engines enable us to choose the tradeoffs at runtime.
 
 ![compaction tradeoffs](./lsm-tutorial/week2-00-triangle.svg)
 

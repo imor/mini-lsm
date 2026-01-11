@@ -4,50 +4,50 @@
 
 # Transaction and Optimistic Concurrency Control
 
-In this chapter, you will implement all interfaces of `Transaction`. Your implementation will maintain a private workspace for modifications inside a transaction, and commit them in batch, so that all modifications within the transaction will only be visible to the transaction itself until commit. We only check for conflicts (i.e., serializable conflicts) when commit, and this is optimistic concurrency control.
+In this chapter, you will implement all `Transaction` interfaces. Your implementation maintains a private workspace for modifications within a transaction and commits them in a batch, so changes remain visible only to the transaction until commit. We check for conflicts (i.e., serializable conflicts) at commit time — this is optimistic concurrency control (OCC).
 
-To run test cases,
+To run the test cases:
 
 ```
 cargo x copy-test --week 3 --day 5
 cargo x scheck
 ```
 
-## Task 1: Local Workspace + Put and Delete
+## Task 1: Local Workspace — Put and Delete
 
-In this task, you will need to modify:
+In this task, modify:
 
 ```
 src/mvcc/txn.rs
 ```
 
-You can now implement `put` and `delete` by inserting the corresponding key/value to the `local_storage`, which is a skiplist memtable without key timestamp. Note that for deletes, you will still need to implement it as inserting an empty value, instead of removing a value from the skiplist.
+Implement `put` and `delete` by inserting the corresponding key/value into `local_storage`, which is a skiplist memtable without key timestamps. For deletes, insert an empty value rather than removing an entry from the skiplist.
 
 ## Task 2: Get and Scan
 
-In this task, you will need to modify:
+In this task, modify:
 
 ```
 src/mvcc/txn.rs
 ```
 
-For `get`, you should first probe the local storage. If a value is found, return the value or `None` depending on whether it is a deletion marker. For `scan`, you will need to implement a `TxnLocalIterator` for the skiplist as in chapter 1.1 when you implement the iterator for a memtable without key timestamp. You will need to store a `TwoMergeIterator<TxnLocalIterator, FusedIterator<LsmIterator>>` in the `TxnIterator`. And, lastly, given that the `TwoMergeIterator` will retain the deletion markers in the child iterators, you will need to modify your `TxnIterator` implementation to correctly handle deletions.
+For `get`, first probe local storage. If a value is found, return the value or `None` depending on whether it is a deletion marker. For `scan`, implement a `TxnLocalIterator` for the skiplist as in Chapter 1.1 (the memtable iterator without key timestamps). Store a `TwoMergeIterator<TxnLocalIterator, FusedIterator<LsmIterator>>` inside `TxnIterator`. Because `TwoMergeIterator` preserves deletion markers from child iterators, update `TxnIterator` to handle deletions correctly.
 
 ## Task 3: Commit
 
-In this task, you will need to modify:
+In this task, modify:
 
 ```
 src/mvcc/txn.rs
 ```
 
-We assume that a transaction will only be used on a single thread. Once your transaction enters the commit phase, you should set `self.committed` to true, so that users cannot do any other operations on the transaction. You `put`, `delete`, `scan`, and `get` implementation should error if the transaction is already committed.
+Assume a transaction is used on a single thread. Once the transaction enters the commit phase, set `self.committed = true` so users cannot perform further operations. Your `put`, `delete`, `scan`, and `get` implementations should return an error if the transaction is already committed.
 
-Your commit implementation should simply collect all key-value pairs from the local storage and submit a write batch to the storage engine.
+The commit implementation should collect all key-value pairs from local storage and submit a write batch to the storage engine.
 
 ## Task 4: Atomic WAL
 
-In this task, you will need to modify:
+In this task, modify:
 
 ```
 src/wal.rs
@@ -55,7 +55,7 @@ src/mem_table.rs
 src/lsm_storage.rs
 ```
 
-Note that `commit` involves producing a write batch, and for now, the write batch does not guarantee atomicity. You will need to change the WAL implementation to produce a header and a footer for the write batch.
+`commit` produces a write batch, and currently batches are not atomic. Update the WAL to include a header and a footer around each batch to ensure atomicity.
 
 The new WAL encoding is as follows:
 
@@ -65,25 +65,24 @@ The new WAL encoding is as follows:
 | batch_size | key_len | key | ts  | value_len | value | more key-value pairs ... | checksum |
 ```
 
-`batch_size` is the size of the `BODY` section. `checksum` is the checksum for the `BODY` section.
+`batch_size` is the size in bytes of the BODY section. `checksum` is computed over the BODY.
 
-There are no test cases to verify your implementation. As long as you pass all existing test cases and implement the above WAL format, everything should be fine.
+There are no test cases to verify this change. As long as you pass existing tests and implement the WAL format above, you are good.
 
-You should implement `Wal::put_batch` and `MemTable::put_batch`. The original `put` function should treat the
-single key-value pair as a batch. That is to say, at this point, your `put` function should call `put_batch`.
+Implement `Wal::put_batch` and `MemTable::put_batch`. The original `put` should treat a single key-value pair as a batch; call `put_batch` from `put`.
 
-A batch should be handled in the same mem table and the same WAL, even if it exceeds the mem table size limit.
+A batch should be handled within the same memtable and the same WAL, even if it exceeds the memtable size limit.
 
 ## Test Your Understanding
 
-* With all the things we have implemented up to this point, does the system satisfy snapshot isolation? If not, what else do we need to do to support snapshot isolation? (Note: snapshot isolation is different from serializable snapshot isolation we will talk about in the next chapter)
-* What if the user wants to batch import data (i.e., 1TB?) If they use the transaction API to do that, will you give them some advice? Is there any opportunity to optimize for this case?
-* What is optimistic concurrency control? What would the system be like if we implement pessimistic concurrency control instead in Mini-LSM?
-* What happens if your system crashes and leave a corrupted WAL on the disk? How do you handle this situation?
-* When you commit the txn, is it necessary to put everything into the memtable in batch, or you can simply put it key by key? Why?
+- With everything implemented so far, does the system satisfy snapshot isolation? If not, what else is needed to support snapshot isolation? (Note: snapshot isolation differs from serializable snapshot isolation covered in the next chapter.)
+- What if the user wants to batch-import data (e.g., 1 TB)? If they use the transaction API, what advice would you give? Are there opportunities to optimize for this case?
+- What is optimistic concurrency control? What would the system look like if we implemented pessimistic concurrency control in Mini-LSM instead?
+- What happens if your system crashes and leaves a corrupted WAL on disk? How do you handle this situation?
+- When committing the transaction, is it necessary to insert everything into the memtable as a batch, or can you insert key-by-key? Why?
 
 ## Bonus Tasks
 
-* **Spill to Disk.** If the private workspace of a transaction gets too large, you may flush some of the data to the disk.
+- **Spill to Disk.** If the private workspace of a transaction gets too large, you may flush some data to disk.
 
 {{#include copyright.md}}

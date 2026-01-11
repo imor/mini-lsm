@@ -8,9 +8,9 @@
 
 In this chapter, you will:
 
-* Implement memtable iterator.
-* Implement merge iterator.
-* Implement LSM read path `scan` for memtables.
+- Implement memtable iterator.
+- Implement merge iterator.
+- Implement LSM read path `scan` for memtables.
 
 To copy the test cases into the starter code and run them,
 
@@ -47,16 +47,16 @@ while iter.is_valid() {
 
 The semantics of `StorageIterator` are distinct for its core methods:
 
-* `next()`: This method is solely responsible for attempting to move the cursor to the next element. It returns a `Result` to report any errors encountered during this advancement (e.g., I/O issues). It does *not* inherently guarantee that the new position is valid, only that the attempt to move was made.
-* `is_valid()`: This method indicates whether the iterator's current cursor points to a valid data element. It does *not* advance the iterator.
+- `next()`: This method attempts to move the cursor to the next element. It returns a `Result` to report any errors encountered during this advancement (e.g., I/O issues). It does **not** inherently guarantee that the new position is valid, only that the attempt to move was made.
+- `is_valid()`: This method indicates whether the iterator's current cursor points to a valid data element. It does **not** advance the iterator.
 
 Therefore, as an implementer of `StorageIterator`, after each call to `next()` (even if it succeeds without an error from the `next()` operation itself), you are responsible for updating the internal state so that `is_valid()` correctly reflects whether the new cursor position actually points to a valid item.
 
-In summary, `next` moves the cursor to the next place. `is_valid` returns if the iterator has reached the end or errored. You can assume `next` will only be called when `is_valid` returns true. There will be a `FusedIterator` wrapper for iterators that block calls to `next` when the iterator is not valid to avoid users from misusing the iterators.
+In summary, `next` moves the cursor to the next place. `is_valid` returns if the iterator has reached the end or errored. You can assume `next` will only be called when `is_valid` returns true. We provide a `FusedIterator` wrapper for iterators that blocks calls to `next` when the iterator is not valid to avoid users from misusing the iterators.
 
-Back to the memtable iterator. You should have found out that the iterator does not have any lifetime associated with that. Imagine that you create a `Vec<u64>` and call `vec.iter()`, the iterator type will be something like `VecIterator<'a>`, where `'a` is the lifetime of the `vec` object. The same applies to `SkipMap`, where its `iter` API returns an iterator with a lifetime. However, in our case, we do not want to have such lifetimes on our iterators to avoid making the system overcomplicated (and hard to compile...).
+Back to the memtable iterator. You should have found that the iterator does not have any lifetime associated with it. Imagine that you create a `Vec<u64>` and call `vec.iter()`, the iterator type will be something like `VecIterator<'a>`, where `'a` is the lifetime of the `vec` object. The same applies to `SkipMap`, where its `iter` API returns an iterator with a lifetime. However, in our case, we do not want to have such lifetimes on our iterators to avoid making the system overcomplicated (and hard to compile...).
 
-If the iterator does not have a lifetime generics parameter, we should ensure that *whenever the iterator is being used, the underlying skiplist object is not freed*. The only way to achieve that is to put the `Arc<SkipMap>` object into the iterator itself. To define such a structure,
+If the iterator does not have a lifetime generics parameter, we should ensure that **whenever the iterator is being used, the underlying skiplist object is not freed**. The only way to achieve that is to put the `Arc<SkipMap>` object into the iterator itself. To define such a structure,
 
 ```rust,no_run
 pub struct MemtableIterator {
@@ -67,7 +67,7 @@ pub struct MemtableIterator {
 
 Okay, here is the problem: we want to express that the lifetime of the iterator is the same as the `map` in the structure. How can we do that?
 
-This is the first and most tricky Rust language thing that you will ever meet in this course -- self-referential structure. If it is possible to write something like:
+This is the first and trickiest Rust language concept you will encounter in this course: self-referential structures. If it were possible to write something like:
 
 ```rust,no_run
 pub struct MemtableIterator { // <- with lifetime 'this
@@ -76,7 +76,7 @@ pub struct MemtableIterator { // <- with lifetime 'this
 }
 ```
 
-Then the problem is solved! You can do this with the help of some third-party libraries like `ouroboros`. It provides an easy way to define self-referential structure. It is also possible to do this with unsafe Rust (and indeed, `ouroboros` itself uses unsafe Rust internally...)
+Then the problem would be solved! You can do this with the help of third-party libraries like `ouroboros`. It provides an easy way to define self-referential structures. It is also possible to do this with unsafe Rust (and indeed, `ouroboros` itself uses unsafe Rust internally...).
 
 We have leveraged [`ouroboros`](https://docs.rs/ouroboros/latest/ouroboros/attr.self_referencing.html) to define the self-referential `MemtableIterator` fields for you. You will need to implement the `MemtableIterator` logic and the `Memtable::scan` API based on this provided structure.
 
@@ -88,9 +88,9 @@ In this task, you will need to modify:
 src/iterators/merge_iterator.rs
 ```
 
-Now that you have multiple memtables and you will create multiple memtable iterators. You will need to merge the results from the memtables and return the latest version of each key to the user.
+Now that you have multiple memtables, you will create multiple memtable iterators. You will need to merge the results from the memtables and return the latest version of each key to the user.
 
-`MergeIterator` maintains a binary heap internally. Consider the challenge of merging `n` sorted sequences (our iterators) into a single sorted output; a binary heap is a natural fit here, as it efficiently helps identify which sequence currently holds the overall smallest element. You'll see that the ordering of the binary heap is such that the iterator with the lowest head key value is first. When multiple iterators have the same head key value, the newest one is first. Note that you will need to handle errors (i.e., when an iterator is not valid) and ensure that the latest version of a key-value pair comes out.
+`MergeIterator` maintains a binary heap internally. Consider the challenge of merging `n` sorted sequences (our iterators) into a single sorted output; a binary heap is a natural fit here, as it efficiently helps identify which sequence currently holds the overall smallest element. You'll see that the ordering of the binary heap is such that the iterator with the lowest head key value comes first. When multiple iterators have the same head key value, the newest one comes first. Note that you will need to handle errors (such as when an iterator is not valid) and ensure that the latest version of a key-value pair comes out.
 
 For example, if we have the following data:
 
@@ -106,7 +106,7 @@ The sequence that the merge iterator outputs should be:
 a->1, b->del, c->4, d->5, e->4
 ```
 
-The constructor of the merge iterator takes a vector of iterators. We assume the one with a lower index (i.e., the first one) has the latest data.
+The constructor of the merge iterator takes a vector of iterators. We assume the iterator with a lower index (the first one) has the latest data.
 
 When using the Rust binary heap, you may find the `peek_mut` function useful.
 
@@ -121,7 +121,7 @@ let Some(mut inner) = heap.peek_mut() {
 }
 ```
 
-One common pitfall is on error handling. For example,
+One common pitfall is error handling. For example,
 
 ```rust,no_run
 let Some(mut inner_iter) = self.iters.peek_mut() {
@@ -129,11 +129,11 @@ let Some(mut inner_iter) = self.iters.peek_mut() {
 }
 ```
 
-If `next` returns an error (i.e., due to disk failure, network failure, checksum error, etc.), it is no longer valid. However, when we go out of the if condition and return the error to the caller, `PeekMut`'s drop will try move the element within the heap, which causes an access to an invalid iterator. Therefore, you will need to do all error handling by yourself instead of using `?` within the scope of `PeekMut`.
+If `next` returns an error (due to disk failure, network failure, checksum error, etc.), the iterator is no longer valid. However, when we exit the if condition and return the error to the caller, `PeekMut`'s drop will try to move the element within the heap, which causes access to an invalid iterator. Therefore, you will need to do all error handling manually instead of using `?` within the scope of `PeekMut`.
 
-We want to avoid dynamic dispatch as much as possible, and therefore we do not use `Box<dyn StorageIterator>` in the system. Instead, we prefer static dispatch using generics. Also note that `StorageIterator` uses generic associated type (GAT), so that it can support both `KeySlice` and `&[u8]` as the key type. We will change `KeySlice` to include the timestamp in week 3 and using a separate type for it now can make the transition more smooth.
+We want to avoid dynamic dispatch as much as possible, so we do not use `Box<dyn StorageIterator>` in the system. Instead, we prefer static dispatch using generics. Also note that `StorageIterator` uses generic associated types (GAT), so that it can support both `KeySlice` and `&[u8]` as the key type. We will change `KeySlice` to include the timestamp in week 3, and using a separate type for it now can make the transition smoother.
 
-Starting this section, we will use `Key<T>` to represent LSM key types and distinguish them from values in the type system. You should use provided APIs of `Key<T>` instead of directly accessing the inner value. We will add timestamp to this key type in part 3, and using the key abstraction will make the transition more smooth. For now, `KeySlice` is equivalent to `&[u8]`, `KeyVec` is equivalent to `Vec<u8>`, and `KeyBytes` is equivalent to `Bytes`.
+Starting in this section, we will use `Key<T>` to represent LSM key types and distinguish them from values in the type system. You should use the provided APIs of `Key<T>` instead of directly accessing the inner value. We will add a timestamp to this key type in part 3, and using the key abstraction will make the transition smoother. For now, `KeySlice` is equivalent to `&[u8]`, `KeyVec` is equivalent to `Vec<u8>`, and `KeyBytes` is equivalent to `Bytes`.
 
 ## Task 3: LSM Iterator + Fused Iterator
 
@@ -149,11 +149,11 @@ We use the `LsmIterator` structure to represent the internal LSM iterators. You 
 type LsmIteratorInner = MergeIterator<MemTableIterator>;
 ```
 
-You may go ahead and implement the `LsmIterator` structure, which calls the corresponding inner iterator, and also skip deleted keys.
+You may implement the `LsmIterator` structure, which calls the corresponding inner iterator and skips deleted keys.
 
 We do not test `LsmIterator` in this task. There will be an integration test in task 4.
 
-Then, we want to provide extra safety on the iterator to avoid users from misusing them. Users should not call `key`, `value`, or `next` when the iterator is not valid. At the same time, they should not use the iterator anymore if `next` returns an error. `FusedIterator` is a wrapper around an iterator to normalize the behaviors across all iterators. You can go ahead and implement it by yourself.
+We want to provide extra safety for the iterator to prevent users from misusing it. Users should not call `key`, `value`, or `next` when the iterator is not valid. Similarly, they should not use the iterator if `next` returns an error. `FusedIterator` is a wrapper around an iterator to normalize the behaviors across all iterators. You can implement it yourself.
 
 ## Task 4: Read Path - Scan
 
@@ -163,26 +163,26 @@ In this task, you will need to modify:
 src/lsm_storage.rs
 ```
 
-We are finally there -- with all iterators you have implemented, you can finally implement the `scan` interface of the LSM engine. You can simply construct an LSM iterator with the memtable iterators (remember to put the latest memtable at the front of the merge iterator), and your storage engine will be able to handle the scan request.
+We are finally there—with all the iterators you have implemented, you can now implement the `scan` interface of the LSM engine. You can simply construct an LSM iterator with the memtable iterators (remember to put the latest memtable at the front of the merge iterator), and your storage engine will be able to handle scan requests.
 
 ## Test Your Understanding
 
-* What is the time/space complexity of using your merge iterator?
-* Why do we need a self-referential structure for memtable iterator?
-* If a key is removed (there is a delete tombstone), do you need to return it to the user? Where did you handle this logic?
-* If a key has multiple versions, will the user see all of them? Where did you handle this logic?
-* If we want to get rid of self-referential structure and have a lifetime on the memtable iterator (i.e., `MemtableIterator<'a>`, where `'a` = memtable or `LsmStorageInner` lifetime), is it still possible to implement the `scan` functionality?
-* What happens if (1) we create an iterator on the skiplist memtable (2) someone inserts new keys into the memtable (3) will the iterator see the new key?
-* What happens if your key comparator cannot give the binary heap implementation a stable order?
-* Why do we need to ensure the merge iterator returns data in the iterator construction order?
-* Is it possible to implement a Rust-style iterator (i.e., `next(&self) -> (Key, Value)`) for LSM iterators? What are the pros/cons?
-* The scan interface is like `fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>)`. How to make this API compatible with Rust-style range (i.e., `key_a..key_b`)? If you implement this, try to pass a full range `..` to the interface and see what will happen.
-* The starter code provides the merge iterator interface to store `Box<I>` instead of `I`. What might be the reason behind that?
+- What is the time/space complexity of using your merge iterator?
+- Why do we need a self-referential structure for memtable iterator?
+- If a key is removed (there is a delete tombstone), do you need to return it to the user? Where did you handle this logic?
+- If a key has multiple versions, will the user see all of them? Where did you handle this logic?
+- If we want to get rid of self-referential structure and have a lifetime on the memtable iterator (i.e., `MemtableIterator<'a>`, where `'a` = memtable or `LsmStorageInner` lifetime), is it still possible to implement the `scan` functionality?
+- What happens if (1) we create an iterator on the skiplist memtable (2) someone inserts new keys into the memtable (3) will the iterator see the new key?
+- What happens if your key comparator cannot give the binary heap implementation a stable order?
+- Why do we need to ensure the merge iterator returns data in the iterator construction order?
+- Is it possible to implement a Rust-style iterator (i.e., `next(&self) -> (Key, Value)`) for LSM iterators? What are the pros/cons?
+- The scan interface is like `fn scan(&self, lower: Bound<&[u8]>, upper: Bound<&[u8]>)`. How to make this API compatible with Rust-style range (i.e., `key_a..key_b`)? If you implement this, try to pass a full range `..` to the interface and see what will happen.
+- The starter code provides the merge iterator interface to store `Box<I>` instead of `I`. What might be the reason behind that?
 
-We do not provide reference answers to the questions, and feel free to discuss about them in the Discord community.
+We do not provide reference answers to the questions, and feel free to discuss them in the Discord community.
 
 ## Bonus Tasks
 
-* **Foreground Iterator.** In this course we assumed that all operations are short, so that we can hold reference to mem-table in the iterator. If an iterator is held by users for a long time, the whole mem-table (which might be 256MB) will stay in the memory even if it has been flushed to disk. To solve this, we can provide a `ForegroundIterator` / `LongIterator` to our user. The iterator will periodically create new underlying storage iterator so as to allow garbage collection of the resources.
+- **Foreground Iterator.** In this course we assumed that all operations are short, so that we can hold a reference to the mem-table in the iterator. If an iterator is held by users for a long time, the whole mem-table (which might be 256MB) will stay in memory even if it has been flushed to disk. To solve this, we can provide a `ForegroundIterator` or `LongIterator` to our users. The iterator will periodically create new underlying storage iterators to allow garbage collection of the resources.
 
 {{#include copyright.md}}

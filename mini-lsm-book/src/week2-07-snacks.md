@@ -10,8 +10,8 @@ In the previous chapter, you already built a full LSM-based storage engine. At t
 
 In this chapter, you will:
 
-* Implement the batch write interface.
-* Add checksums to the blocks, SST metadata, manifest, and WALs.
+- Implement the batch write interface.
+- Add checksums to the blocks, SST metadata, manifest, and WALs.
 
 **Note: We do not have unit tests for this chapter. As long as you pass all previous tests and ensure checksums are properly encoded in your file format, it would be fine.**
 
@@ -51,9 +51,9 @@ The format of the SST will be changed to:
 
 We use crc32 as our checksum algorithm. You can use `crc32fast::hash` to generate the checksum for the block after building a block.
 
-Usually, when user specify the target block size in the storage options, the size should include both block content and checksum. For example, if the target block size is 4096, and the checksum takes 4 bytes, the actual block content target size should be 4092. However, to avoid breaking previous test cases and for simplicity, in our course, we will **still** use the target block size as the target content size, and simply append the checksum at the end of the block.
+Usually, when users specify the target block size in the storage options, the size should include both block content and checksum. For example, if the target block size is 4096 and the checksum takes 4 bytes, the actual block content target size should be 4092. However, to avoid breaking previous test cases and for simplicity, in our course we will **still** use the target block size as the target content size and simply append the checksum at the end of the block.
 
-When you read the block, you should verify the checksum in `read_block` correctly generate the slices for the block content. You should pass all test cases in previous chapters after implementing this functionality.
+When you read the block, you should verify the checksum in `read_block` and correctly generate the slices for the block content. You should pass all test cases in previous chapters after implementing this functionality.
 
 ## Task 3: SST Meta Checksum
 
@@ -88,10 +88,10 @@ src/wal.rs
 
 We will do a per-record checksum in the write-ahead log. To do this, you have two choices:
 
-* Generate a buffer of the key-value record, and use `crc32fast::hash` to compute the checksum at once.
-* Write one field at a time (e.g., key length, key slice), and use a `crc32fast::Hasher` to compute the checksum incrementally on each field.
+- Generate a buffer of the key-value record, and use `crc32fast::hash` to compute the checksum at once.
+- Write one field at a time (such as key length, key slice), and use a `crc32fast::Hasher` to compute the checksum incrementally on each field.
 
-This is up to your choice and you will need to *choose your own adventure*. Both method should produce exactly the same result, as long as you handle little endian / big endian correctly. The new WAL encoding should be like:
+This is up to your choice and you will need to _choose your own adventure_. Both methods should produce exactly the same result, as long as you handle little endian / big endian correctly. The new WAL encoding should be like:
 
 ```
 | key_len | key | value_len | value | checksum |
@@ -111,13 +111,13 @@ After implementing everything, you should pass all previous test cases. We do no
 
 ## Test Your Understanding
 
-* Consider the case that an LSM storage engine only provides `write_batch` as the write interface (instead of single put + delete). Is it possible to implement it as follows: there is a single write thread with an mpsc channel receiver to get the changes, and all threads send write batches to the write thread. The write thread is the single point to write to the database. What are the pros/cons of this implementation? (Congrats if you do so you get BadgerDB!)
-* Is it okay to put all block checksums altogether at the end of the SST file instead of store it along with the block? Why?
+- Consider the case that an LSM storage engine only provides `write_batch` as the write interface (instead of single put + delete). Is it possible to implement it as follows: there is a single write thread with an mpsc channel receiver to get the changes, and all threads send write batches to the write thread. The write thread is the single point to write to the database. What are the pros/cons of this implementation? (Congrats if you do so—you get BadgerDB!)
+- Is it okay to put all block checksums altogether at the end of the SST file instead of storing them along with each block? Why?
 
-We do not provide reference answers to the questions, and feel free to discuss about them in the Discord community.
+We do not provide reference answers to the questions, and feel free to discuss them in the Discord community.
 
 ## Bonus Tasks
 
-* **Recovering when Corruption**. If there is a checksum error, open the database in a safe mode so that no writes can be performed and non-corrupted data can still be retrieved.
+- **Recovering when Corruption**. If there is a checksum error, open the database in a safe mode so that no writes can be performed and non-corrupted data can still be retrieved.
 
 {{#include copyright.md}}

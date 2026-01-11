@@ -8,8 +8,8 @@
 
 In this chapter, you will:
 
-* Implement a tiered compaction strategy and simulate it on the compaction simulator.
-* Incorporate tiered compaction strategy into the system.
+- Implement a tiered compaction strategy and simulate it on the compaction simulator.
+- Incorporate tiered compaction strategy into the system.
 
 The tiered compaction we talk about in this chapter is the same as RocksDB's universal compaction. We will use these two terminologies interchangeably.
 
@@ -28,7 +28,7 @@ It might be helpful to take a look at [week 2 overview](./week2-overview.md) bef
 
 ## Task 1: Universal Compaction
 
-In this chapter, you will implement RocksDB's universal compaction, which is of the tiered compaction family compaction strategies. Similar to the simple leveled compaction strategy, we only use number of files as the indicator in this compaction strategy. And when we trigger the compaction jobs, we always include a full sorted run (tier) in the compaction job.
+In this chapter, you will implement RocksDB's universal compaction, which is in the tiered compaction family of strategies. Similar to the simple leveled compaction strategy, we use the number of files as the indicator in this compaction strategy. When we trigger compaction jobs, we always include a full sorted run (tier).
 
 ### Task 1.0: Precondition
 
@@ -38,15 +38,15 @@ In this task, you will need to modify:
 src/compact/tiered.rs
 ```
 
-In universal compaction, we do not use L0 SSTs in the LSM state. Instead, we directly flush new SSTs to a single sorted run (called tier). In the LSM state, `levels` will now include all tiers, where **the lowest index is the latest SST flushed**. Each element in the `levels` vector stores a tuple: level ID (used as tier ID) and the SSTs in that level. Every time you flush L0 SSTs, you should flush the SST into a tier placed at the front of the vector. The compaction simulator generates tier id based on the first SST id, and you should do the same in your implementation.
+In universal compaction, we do not use L0 SSTs in the LSM state. Instead, we directly flush new SSTs to a single sorted run (called a tier). In the LSM state, `levels` will now include all tiers, where **the lowest index is the latest SST flushed**. Each element in the `levels` vector stores a tuple: level ID (used as tier ID) and the SSTs in that level. Every time you flush L0 SSTs, you should flush the SST into a tier placed at the front of the vector. The compaction simulator generates the tier ID based on the first SST ID, and you should do the same in your implementation.
 
-Universal compaction will only trigger tasks when the number of tiers (sorted runs) reaches `num_tiers`. Otherwise, it does not trigger any compaction.
+Universal compaction only triggers tasks when the number of tiers (sorted runs) reaches `num_tiers`. Otherwise, it does not trigger any compaction.
 
 ### Task 1.1: Triggered by Space Amplification Ratio
 
 The first trigger of universal compaction is by space amplification ratio. As we discussed in the overview chapter, space amplification can be estimated by `engine_size / last_level_size`. In our implementation, we compute the space amplification ratio by `all levels except last level size / last level size`, so that the ratio can be scaled to `[0, +inf)` instead of `[1, +inf]`. This is also consistent with the RocksDB implementation.
 
-The reason why we compute the space amplification ratio like this is because we model the engine in a way that it stores a fixed amount of user data (i.e., assume it's 100GB), and the user keeps updating the values by writing to the engine. Therefore, eventually, all keys get pushed down to the bottom-most tier, the bottom-most tier size should be equivalent to the amount of data (100GB), the upper tiers contain updates to the data that are not yet compacted to the bottom-most tier.
+The reason we compute the space amplification ratio like this is because we model the engine in a way that it stores a fixed amount of user data (assume it is 100GB), and the user keeps updating values by writing to the engine. Therefore, eventually, all keys get pushed down to the bottom-most tier; the bottom-most tier size should be equivalent to the amount of data (100GB), and the upper tiers contain updates that are not yet compacted to the bottom-most tier.
 
 When `all levels except last level size / last level size` >= `max_size_amplification_percent * 1%`, we will need to trigger a full compaction. For example, if we have a LSM state like:
 
@@ -151,7 +151,7 @@ The current trigger only reduces space amplification. We will need to add new tr
 
 ### Task 1.2: Triggered by Size Ratio
 
-The next trigger is the size ratio trigger. The trigger maintains the size ratio between the tiers. From the first tier, we compute the size of `this tier / sum of all previous tiers`. For the first encountered tier where this value `> (100 + size_ratio) * 1%`, we will compact all previous tiers excluding the current tier. We only do this compaction with there are more than `min_merge_width` tiers to be merged.
+The next trigger is the size ratio trigger. This trigger maintains the size ratio between the tiers. From the first tier, we compute `this tier / sum of all previous tiers`. For the first encountered tier where this value `> (100 + size_ratio) * 1%`, we will compact all previous tiers excluding the current tier. We only do this compaction when there are more than `min_merge_width` tiers to be merged.
 
 For example, given the following LSM state, and assume `size_ratio` = 1, and `min_merge_width` = 2. We should compact when the ratio value > 101%:
 
@@ -278,7 +278,7 @@ src/compact.rs
 src/lsm_storage.rs
 ```
 
-As tiered compaction does not use the L0 level of the LSM state, you should directly flush your memtables to a new tier instead of as an L0 SST. You can use `self.compaction_controller.flush_to_l0()` to know whether to flush to L0. You may use the first output SST id as the level/tier id for your new sorted run. You will also need to modify your compaction process to construct merge iterators for tiered compaction jobs.
+As tiered compaction does not use the L0 level of the LSM state, you should directly flush your memtables to a new tier instead of flushing as an L0 SST. You can use `self.compaction_controller.flush_to_l0()` to determine whether to flush to L0. You may use the first output SST ID as the level/tier ID for your new sorted run. You will also need to modify your compaction process to construct merge iterators for tiered compaction jobs.
 
 ## Related Readings
 
@@ -286,16 +286,16 @@ As tiered compaction does not use the L0 level of the LSM state, you should dire
 
 ## Test Your Understanding
 
-* What is the estimated write amplification of leveled compaction? (Okay this is hard to estimate... But what if without the last *reduce sorted run* trigger?)
-* What is the estimated read amplification of leveled compaction?
-* What are the pros/cons of universal compaction compared with simple leveled/tiered compaction?
-* How much storage space is it required (compared with user data size) to run universal compaction?
-* Can we merge two tiers that are not adjacent in the LSM state?
-* What happens if compaction speed cannot keep up with the SST flushes for tiered compaction?
-* What might needs to be considered if the system schedules multiple compaction tasks in parallel?
-* SSDs also write its own logs (basically it is a log-structured storage). If the SSD has a write amplification of 2x, what is the end-to-end write amplification of the whole system? Related: [ZNS: Avoiding the Block Interface Tax for Flash-based SSDs](https://www.usenix.org/conference/atc21/presentation/bjorling).
-* Consider the case that the user chooses to keep a large number of sorted runs (i.e., 300) for tiered compaction. To make the read path faster, is it a good idea to keep some data structure that helps reduce the time complexity (i.e., to `O(log n)`) of finding SSTs to read in each layer for some key ranges? Note that normally, you will need to do a binary search in each sorted run to find the key ranges that you will need to read. (Check out Neon's [layer map](https://neon.tech/blog/persistent-structures-in-neons-wal-indexing) implementation!)
+- What is the estimated write amplification of leveled compaction? (Okay, this is hard to estimate... But what if we exclude the last _reduce sorted run_ trigger?)
+- What is the estimated read amplification of leveled compaction?
+- What are the pros/cons of universal compaction compared with simple leveled/tiered compaction?
+- How much storage space is required (compared with user data size) to run universal compaction?
+- Can we merge two tiers that are not adjacent in the LSM state?
+- What happens if compaction speed cannot keep up with the SST flushes for tiered compaction?
+- What needs to be considered if the system schedules multiple compaction tasks in parallel?
+- SSDs also write their own logs (they are essentially log-structured storage). If the SSD has a write amplification of 2x, what is the end-to-end write amplification of the whole system? Related: [ZNS: Avoiding the Block Interface Tax for Flash-based SSDs](https://www.usenix.org/conference/atc21/presentation/bjorling).
+- Consider the case that the user chooses to keep a large number of sorted runs (i.e., 300) for tiered compaction. To make the read path faster, is it a good idea to keep some data structure that helps reduce the time complexity (i.e., to `O(log n)`) of finding SSTs to read in each layer for some key ranges? Note that normally, you will need to do a binary search in each sorted run to find the key ranges that you will need to read. (Check out Neon's [layer map](https://neon.tech/blog/persistent-structures-in-neons-wal-indexing) implementation!)
 
-We do not provide reference answers to the questions, and feel free to discuss about them in the Discord community.
+We do not provide reference answers to the questions; feel free to discuss them in the Discord community.
 
 {{#include copyright.md}}
